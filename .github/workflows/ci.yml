@@ -1,0 +1,60 @@
+name: CI Test A Master
+
+on:
+  push:
+    branches:
+      - master
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ruby/setup-ruby@v1
+
+      - name: Bundle
+        run: bundle install
+
+      - name: RuboCop
+        run: bundle exec rubocop
+
+      - name: RSpec
+        run: bundle exec rspec spec
+
+  update-version:
+    runs-on: ubuntu-latest
+    name: Update Version
+    needs: build
+
+    steps:
+    - name: Checkout CI Test A
+      uses: actions/checkout@v2
+      with:
+        path: ./ci-test-a
+
+    - name: Checkout CI Test B
+      uses: actions/checkout@master
+      with:
+        repository: maxsuhak/ci-test-b
+        token: ${{ secrets.ACTIONS_TOKEN }}
+        path: ./ci-test-b
+
+    - name: Change version
+      run: |
+        current_version=$(head -n 1 ./ci-test-a/VERSION)
+        current_date=$(date +'%Y/%m/%d')
+        hex=$(echo $RANDOM | md5sum | head -c 20; echo;)
+
+        app_version="${current_version}-${current_date}-${hex}"
+
+        awk -v app_version="  app:version: ${app_version}" '{sub("^  app:version: (.*)$", app_version)}1' ./ci-test-b/VERSION.yml > tmp.yml && mv tmp.yml ./ci-test-b/VERSION.yml
+
+    - name: Push CI Test B
+      run: |
+        cd ./ci-test-b
+        git add .
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git commit -am "Updating app:version"
+        git push
